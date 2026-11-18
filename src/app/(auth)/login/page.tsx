@@ -15,7 +15,10 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const rawCallbackUrl = searchParams.get("callbackUrl") || "/dashboard";
-  const callbackUrl = rawCallbackUrl.startsWith("/.well-known") ? "/dashboard" : rawCallbackUrl;
+  const callbackUrl =
+    !rawCallbackUrl || rawCallbackUrl === "/" || rawCallbackUrl.startsWith("/.well-known")
+      ? "/dashboard"
+      : rawCallbackUrl;
 
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
