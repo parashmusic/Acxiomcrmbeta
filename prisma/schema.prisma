@@ -1,0 +1,323 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  SALES_EXECUTIVE
+}
+
+enum CustomerStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  UNQUALIFIED
+  CONVERTED
+  LOST
+}
+
+enum LeadPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum LeadSource {
+  WEBSITE
+  REFERRAL
+  EMAIL_CAMPAIGN
+  COLD_CALL
+  SOCIAL_MEDIA
+  EVENT
+  OTHER
+}
+
+enum OpportunityStage {
+  QUALIFICATION
+  PROPOSAL
+  NEGOTIATION
+  WON
+  LOST
+}
+
+enum OpportunityStatus {
+  OPEN
+  WON
+  LOST
+}
+
+enum FollowUpStatus {
+  PLANNED
+  COMPLETED
+  MISSED
+  CANCELLED
+}
+
+enum FollowUpType {
+  CALL
+  MEETING
+  EMAIL
+  TASK
+}
+
+enum ActivityType {
+  CALL
+  MEETING
+  EMAIL
+  TASK
+}
+
+enum ActivityStatus {
+  PLANNED
+  COMPLETED
+  CANCELLED
+}
+
+model User {
+  id               String    @id @default(cuid())
+  name             String?
+  email            String    @unique
+  emailVerified    DateTime?
+  image            String?
+  passwordHash     String?
+  role             Role      @default(SALES_EXECUTIVE)
+  isActive         Boolean   @default(true)
+  failedLoginCount Int       @default(0)
+  lockoutEnd       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  accounts Account[]
+  sessions Session[]
+
+  assignedCustomers    Customer[]    @relation("CustomerAssignedTo")
+  createdCustomers     Customer[]    @relation("CustomerCreatedBy")
+  assignedLeads        Lead[]        @relation("LeadAssignedTo")
+  createdLeads         Lead[]        @relation("LeadCreatedBy")
+  assignedOpportunities Opportunity[] @relation("OpportunityAssignedTo")
+  assignedFollowUps    FollowUp[]    @relation("FollowUpAssignedTo")
+  assignedActivities   Activity[]    @relation("ActivityAssignedTo")
+  auditLogs            AuditLog[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+model Customer {
+  id           String         @id @default(cuid())
+  customerCode String         @unique
+  customerName String
+  email        String         @unique
+  phone        String         @unique
+  companyName  String?
+  address      String?
+  city         String?
+  state        String?
+  status       CustomerStatus @default(ACTIVE)
+  notes        String?        @db.Text
+  assignedToId String?
+  createdById  String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  assignedTo   User?         @relation("CustomerAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdBy    User?         @relation("CustomerCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  leads        Lead[]        @relation("ConvertedCustomer")
+  opportunities Opportunity[]
+  followUps    FollowUp[]
+  activities   Activity[]
+
+  @@index([assignedToId])
+  @@index([status])
+  @@index([email])
+  @@map("customers")
+}
+
+model Lead {
+  id                    String       @id @default(cuid())
+  leadCode              String       @unique
+  leadName              String
+  email                 String?
+  phone                 String?
+  companyName           String?
+  source                LeadSource   @default(OTHER)
+  status                LeadStatus   @default(NEW)
+  priority              LeadPriority @default(MEDIUM)
+  expectedValue         Decimal?     @db.Decimal(15, 2)
+  notes                 String?      @db.Text
+  assignedToId          String?
+  createdById           String?
+  convertedCustomerId   String?
+  convertedOpportunityId String?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  assignedTo          User?        @relation("LeadAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdBy           User?        @relation("LeadCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  convertedCustomer   Customer?    @relation("ConvertedCustomer", fields: [convertedCustomerId], references: [id], onDelete: SetNull)
+  convertedOpportunity Opportunity? @relation("ConvertedLead", fields: [convertedOpportunityId], references: [id], onDelete: SetNull)
+  followUps           FollowUp[]
+  activities          Activity[]
+
+  @@index([assignedToId])
+  @@index([status])
+  @@index([priority])
+  @@index([source])
+  @@map("leads")
+}
+
+model Opportunity {
+  id               String            @id @default(cuid())
+  opportunityName  String
+  customerId       String
+  leadId           String?
+  amount           Decimal           @db.Decimal(15, 2)
+  stage            OpportunityStage  @default(QUALIFICATION)
+  probability      Int               @default(0)
+  expectedCloseDate DateTime
+  status           OpportunityStatus @default(OPEN)
+  source           LeadSource?
+  notes            String?           @db.Text
+  assignedToId     String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  customer   Customer   @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  assignedTo User?      @relation("OpportunityAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+  leads      Lead[]     @relation("ConvertedLead")
+  followUps  FollowUp[]
+
+  @@index([customerId])
+  @@index([assignedToId])
+  @@index([status])
+  @@index([stage])
+  @@map("opportunities")
+}
+
+model FollowUp {
+  id            String         @id @default(cuid())
+  customerId    String?
+  leadId        String?
+  opportunityId String?
+  followUpDate  DateTime
+  subject       String
+  followUpType  FollowUpType
+  remarks       String?        @db.Text
+  status        FollowUpStatus @default(PLANNED)
+  assignedToId  String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  customer    Customer?    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  lead        Lead?        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  opportunity Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  assignedTo  User?        @relation("FollowUpAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  @@index([customerId])
+  @@index([leadId])
+  @@index([opportunityId])
+  @@index([assignedToId])
+  @@index([status])
+  @@index([followUpDate])
+  @@map("follow_ups")
+}
+
+model Activity {
+  id           String         @id @default(cuid())
+  activityType ActivityType
+  subject      String
+  description  String?        @db.Text
+  activityDate DateTime
+  customerId   String?
+  leadId       String?
+  assignedToId String?
+  status       ActivityStatus @default(PLANNED)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  lead       Lead?     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  assignedTo User?     @relation("ActivityAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  @@index([customerId])
+  @@index([leadId])
+  @@index([assignedToId])
+  @@index([status])
+  @@index([activityDate])
+  @@map("activities")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  module     String
+  entityName String
+  recordId   String?
+  oldValue   Json?
+  newValue   Json?
+  result     String
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([module])
+  @@index([entityName])
+  @@index([recordId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
