@@ -1,8 +1,8 @@
 import { auth } from "@/lib/auth/config";
 import { Role } from "@prisma/client";
 import { SessionUser } from "@/types";
-import { ForbiddenError, UnauthorizedError } from "@/lib/api-error";
 import { can, Action, Resource } from "@/lib/rbac";
+import { redirect } from "next/navigation";
 
 export async function getCurrentUser(): Promise<SessionUser | null> {
   const session = await auth();
@@ -20,7 +20,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
 export async function requireAuthUser(): Promise<SessionUser> {
   const user = await getCurrentUser();
   if (!user) {
-    throw new UnauthorizedError("You must be logged in to perform this action.");
+    redirect("/login");
   }
   return user;
 }
@@ -28,7 +28,7 @@ export async function requireAuthUser(): Promise<SessionUser> {
 export async function requireRole(allowedRoles: Role[]): Promise<SessionUser> {
   const user = await requireAuthUser();
   if (!allowedRoles.includes(user.role)) {
-    throw new ForbiddenError("You do not have permission to access this resource.");
+    redirect("/dashboard");
   }
   return user;
 }
@@ -36,7 +36,7 @@ export async function requireRole(allowedRoles: Role[]): Promise<SessionUser> {
 export async function requirePermission(action: Action, resource: Resource): Promise<SessionUser> {
   const user = await requireAuthUser();
   if (!can(user.role, action, resource)) {
-    throw new ForbiddenError("You do not have permission to perform this action.");
+    redirect("/dashboard");
   }
   return user;
 }
